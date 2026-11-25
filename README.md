@@ -19,6 +19,6 @@ WattWise lets users upload an electricity bill and uses Gemini AI to extract uni
 Google AI Studio, Gemini API, React, Vite, Vercel
 
 ## Live Demo
-PASTE YOUR VERCEL LINK HERE
+https://wattwise-tan.vercel.app/
 
 Built for PromptWars x Sudarshan.
