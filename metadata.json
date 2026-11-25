@@ -1,0 +1,6 @@
+{
+  "name": "WattWise",
+  "description": "AI electricity bill analyzer for Indian households. Understand your bill, measure your carbon footprint, and get personalized rupee and CO2 saving tips.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
