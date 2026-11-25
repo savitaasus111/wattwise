@@ -37,6 +37,47 @@ function readFileAsBase64(file: File): Promise<string> {
   });
 }
 
+async function prepareBillPayload(
+  file: File
+): Promise<{ base64Data: string; mimeType: string }> {
+  const fallbackMime =
+    file.type ||
+    (file.name.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/jpeg');
+
+  // Compress large raster images (>1.8 MB) so phone camera photos fit comfortably inside serverless limits
+  const isCompressibleImage = /^image\/(jpeg|jpg|png|webp)$/i.test(fallbackMime);
+  if (isCompressibleImage && file.size > 1.8 * 1024 * 1024) {
+    try {
+      const originalDataUrl = await readFileAsBase64(file);
+      const compressed = await new Promise<string>((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+          const maxDim = 1800;
+          const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.max(1, Math.round(img.width * scale));
+          canvas.height = Math.max(1, Math.round(img.height * scale));
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            reject(new Error('No canvas context'));
+            return;
+          }
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          resolve(canvas.toDataURL('image/jpeg', 0.85));
+        };
+        img.onerror = () => reject(new Error('Image decode failed'));
+        img.src = originalDataUrl;
+      });
+      return { base64Data: compressed, mimeType: 'image/jpeg' };
+    } catch {
+      // Fallback to raw file if browser cannot decode
+    }
+  }
+
+  const base64Data = await readFileAsBase64(file);
+  return { base64Data, mimeType: fallbackMime };
+}
+
 export default function App() {
   const [language, setLanguage] = useState<Language>('en');
   const [stage, setStage] = useState<WorkspaceStage>('upload');
@@ -77,10 +118,7 @@ export default function App() {
     setTimeout(scrollToAnalyzer, 60);
 
     try {
-      const base64Data = await readFileAsBase64(file);
-      const mimeType =
-        file.type ||
-        (file.name.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/jpeg');
+      const { base64Data, mimeType } = await prepareBillPayload(file);
 
       const response = await fetch('/api/analyze-bill', {
         method: 'POST',
@@ -91,15 +129,16 @@ export default function App() {
         }),
       });
 
-      const payload = await response.json();
+      const payload = await response.json().catch(() => null);
 
       if (!response.ok) {
-        setErrorMessage(
-          payload?.message ||
-            (language === 'hi'
-              ? 'बिल पढ़ने में समस्या आई। कृपया पुनः प्रयास करें या मान खुद भरें।'
-              : 'Could not read that bill file. Please try again or enter values manually.')
-        );
+        const fallbackMsg =
+          response.status === 413
+            ? copy.upload.fileTooLarge
+            : language === 'hi'
+            ? 'बिल पढ़ने में समस्या आई। कृपया पुनः प्रयास करें या मान खुद भरें।'
+            : 'Could not read that bill file. Please try again or enter values manually.';
+        setErrorMessage(payload?.message || fallbackMsg);
         setStage('upload');
         return;
       }
@@ -129,7 +168,7 @@ export default function App() {
         body: JSON.stringify(validated),
       });
 
-      const payload = await response.json();
+      const payload = await response.json().catch(() => null);
 
       if (!response.ok) {
         setErrorMessage(
